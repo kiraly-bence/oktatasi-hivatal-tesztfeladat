@@ -151,6 +151,10 @@
             form.selectedCourse.university = selectedCourse.value.university;
             form.selectedCourse.faculty = selectedCourse.value.faculty;
             form.selectedCourse.course = selectedCourse.value.course;
+        } else {
+            form.selectedCourse.university = '';
+            form.selectedCourse.faculty = '';
+            form.selectedCourse.course = '';
         }
     }
 
