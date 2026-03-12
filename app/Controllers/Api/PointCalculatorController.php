@@ -9,7 +9,6 @@ use App\Exceptions\PointCalculationException;
 use App\Services\PointCalculatorService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 class PointCalculatorController
 {
@@ -17,13 +16,19 @@ class PointCalculatorController
     {
         $pointCalculatorService = new PointCalculatorService();
         $pointCalculatorData = PointCalculatorData::fromArray($data);
-        
+
         try {
             $points = $pointCalculatorService->calculate($pointCalculatorData);
         } catch (PointCalculationException $e) {
-            return new JsonResponse(['error' => 'Point Calculation Error', 'message' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return new JsonResponse([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ]);
         }
 
-        return new JsonResponse(['points' => $points]);
+        return new JsonResponse([
+            'success' => true,
+            'points' => $points,
+        ]);
     }
 }

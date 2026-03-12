@@ -194,24 +194,26 @@
                 body: JSON.stringify(payload),
             });
 
-            const data = await response.json();
-
             if (!response.ok) {
                 resultType.value = 'error';
 
-                switch (response.status) {
-                    case 422:
-                        result.value = data.message ?? 'Hiba történt a pontszámítás során.';
-                        break;
-                    case 400:
-                        result.value = 'Érvénytelen adatok. Kérjük, ellenőrizd a megadott információkat.';
-                        break;
-                    default:
-                        result.value = 'Hiba történt. Kérjük, próbáld újra később.';
+                if (response.status === 400) {
+                    result.value = 'Érvénytelen adatok. Kérjük, ellenőrizd a megadott információkat.';
+                } else {
+                    result.value = 'Hiba történt. Kérjük, próbáld újra később.';
                 }
-            } else {
+
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
                 resultType.value = 'success';
                 result.value = `Elért pontszám: ${data.points} pont`;
+            } else {
+                resultType.value = 'error';
+                result.value = data.message;
             }
         } catch (e) {
             resultType.value = 'error';
