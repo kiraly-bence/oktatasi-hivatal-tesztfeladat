@@ -169,6 +169,7 @@ class PointCalculatorService
             if (in_array($subject->value, $globalRequired)) {
                 continue;
             }
+
             if (!isset($examResultsByName[$subject->value])) {
                 $errors[] = "Hiányzó kötelező érettségi tárgy: {$subject->value}";
             } elseif (in_array($subject, $requiredAdvanced) && $examResultsByName[$subject->value]->type !== ExamType::Advanced) {
@@ -191,7 +192,6 @@ class PointCalculatorService
     private function calculateBasePoints(array $examResults, array $requirements): int
     {
         $examResultsByName = $this->indexByName($examResults);
-
         $requiredScore = array_sum(array_map(fn($subject) => $examResultsByName[$subject->value]->score, $requirements['required']));
         $electiveScores = array_filter(
             array_map(fn($subject) => $examResultsByName[$subject->value]->score ?? null, $requirements['elective']),
@@ -247,6 +247,7 @@ class PointCalculatorService
     private function indexByName(array $examResults): array
     {
         $indexed = [];
+        
         foreach ($examResults as $examResult) {
             $indexed[$examResult->name->value] = $examResult;
         }
