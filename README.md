@@ -27,6 +27,8 @@ npm run build
 php -S localhost:8080 -t public
 ```
 
+Ezután a [localhost:8080](localhost:8080) címen elérhetővé válik a webalkalmazás. Használható böngészőből vagy akár API-ként is.
+
 ## Tesztelés
 
 ### PHPUnit
