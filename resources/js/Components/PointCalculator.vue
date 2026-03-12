@@ -70,8 +70,12 @@
             {{ loading ? 'Számítás...' : 'Pontszám kiszámítása' }}
         </button>
 
-        <div v-if="result !== null" :class="['alert', 'mt-4', resultType === 'success' ? 'alert-success' : 'alert-danger']">
-            {{ result }}
+        <div v-if="resultType === 'success'" class="alert alert-success mt-4">
+            Elért pontszám: {{ points }} pont
+        </div>
+
+        <div v-if="resultType === 'error'" class="alert alert-danger mt-4">
+            <div v-for="message in messages" :key="message">{{ message }}</div>
         </div>
     </div>
 </template>
@@ -80,8 +84,9 @@
     import { ref, reactive, computed } from 'vue';
 
     const loading = ref(false);
-    const result = ref(null);
-    const resultType = ref('success');
+    const points = ref(null);
+    const messages = ref([]);
+    const resultType = ref(null);
 
     const courseList = [
         { label: 'ELTE IK - Programtervező informatikus', university: 'ELTE', faculty: 'IK', course: 'Programtervező informatikus' },
@@ -172,7 +177,9 @@
 
     async function submit() {
         loading.value = true;
-        result.value = null;
+        points.value = null;
+        messages.value = [];
+        resultType.value = null;
 
         const payload = {
             'valasztott-szak': {
@@ -198,9 +205,9 @@
                 resultType.value = 'error';
 
                 if (response.status === 400) {
-                    result.value = 'Érvénytelen adatok. Kérjük, ellenőrizd a megadott információkat.';
+                    messages.value = ['Érvénytelen adatok. Kérjük, ellenőrizd a megadott információkat.'];
                 } else {
-                    result.value = 'Hiba történt. Kérjük, próbáld újra később.';
+                    messages.value = ['Hiba történt. Kérjük, próbáld újra később.'];
                 }
 
                 return;
@@ -210,14 +217,14 @@
 
             if (data.success) {
                 resultType.value = 'success';
-                result.value = `Elért pontszám: ${data.points} pont`;
+                points.value = data.points;
             } else {
                 resultType.value = 'error';
-                result.value = data.message;
+                messages.value = data.messages;
             }
         } catch (e) {
             resultType.value = 'error';
-            result.value = 'Hiba történt a kérés során.';
+            messages.value = ['Hiba történt a kérés során.'];
         } finally {
             loading.value = false;
         }

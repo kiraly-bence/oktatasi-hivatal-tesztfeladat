@@ -71,16 +71,28 @@ class PointCalculatorService
 
     public function calculate(PointCalculatorData $data): int
     {
-        $this->validateNoDuplicateSubjects($data->examResults);
-        $this->validateNoDuplicateLanguages($data->bonusPoints);
-        $this->validateRequiredSubjects($data->examResults);
-        $this->validatePassingScores($data->examResults);
+        $errors = [];
 
-        $requirements = $this->getCourseRequirements(
-            $data->selectedCourse->university,
-            $data->selectedCourse->faculty,
-            $data->selectedCourse->course,
-        );
+        $errors = array_merge($errors, $this->validateNoDuplicateSubjects($data->examResults));
+        $errors = array_merge($errors, $this->validateNoDuplicateLanguages($data->bonusPoints));
+        $errors = array_merge($errors, $this->validateRequiredSubjects($data->examResults));
+        $errors = array_merge($errors, $this->validatePassingScores($data->examResults));
+
+        try {
+            $requirements = $this->getCourseRequirements(
+                $data->selectedCourse->university,
+                $data->selectedCourse->faculty,
+                $data->selectedCourse->course,
+            );
+            $errors = array_merge($errors, $this->validateCourseRequirements($data->examResults, $requirements));
+        } catch (PointCalculationException $e) {
+            $errors = array_merge($errors, $e->messages);
+        }
+
+        if (!empty($errors)) {
+            sort($errors);
+            throw new PointCalculationException($errors);
+        }
 
         $basePoints = $this->calculateBasePoints($data->examResults, $requirements);
         $bonusPoints = $this->calculateBonusPoints($data->examResults, $data->bonusPoints);
@@ -88,86 +100,103 @@ class PointCalculatorService
         return $basePoints + $bonusPoints;
     }
 
-    private function validateNoDuplicateSubjects(array $examResults): void
-{
-    $names = array_map(fn(ExamResult $e) => $e->name, $examResults);
-    $duplicates = array_filter(array_count_values(array_column($names, 'value')), fn($count) => $count > 1);
+    private function validateNoDuplicateSubjects(array $examResults): array
+    {
+        $names = array_map(fn(ExamResult $e) => $e->name, $examResults);
+        $duplicates = array_filter(array_count_values(array_column($names, 'value')), fn($count) => $count > 1);
 
-    if (!empty($duplicates)) {
-        $subject = array_key_first($duplicates);
-        throw new PointCalculationException("Ugyanabból a tantárgyból nem lehet kétszer érettségizni: {$subject}");
+        return array_map(
+            fn($subject) => "Ugyanabból a tantárgyból nem lehet kétszer érettségizni: {$subject}",
+            array_keys($duplicates)
+        );
     }
-}
 
-private function validateNoDuplicateLanguages(array $bonusPoints): void
-{
-    $languages = array_map(fn(BonusPoint $b) => $b->language->value, $bonusPoints);
-    $duplicates = array_filter(array_count_values($languages), fn($count) => $count > 1);
+    private function validateNoDuplicateLanguages(array $bonusPoints): array
+    {
+        $languages = array_map(fn(BonusPoint $b) => $b->language->value, $bonusPoints);
+        $duplicates = array_filter(array_count_values($languages), fn($count) => $count > 1);
 
-    if (!empty($duplicates)) {
-        $language = array_key_first($duplicates);
-        throw new PointCalculationException("Ugyanabból a nyelvből nem lehet kétszer nyelvvizsgát megadni: {$language}");
+        return array_map(
+            fn($language) => "Ugyanabból a nyelvből nem lehet kétszer nyelvvizsgát megadni: {$language}",
+            array_keys($duplicates)
+        );
     }
-}
 
-    private function validateRequiredSubjects(array $examResults): void
+    private function validateRequiredSubjects(array $examResults): array
     {
         $subjects = array_map(fn(ExamResult $e) => $e->name, $examResults);
+        $errors = [];
 
-        foreach (self::REQUIRED_SUBJECTS as $required) { 
+        foreach (self::REQUIRED_SUBJECTS as $required) {
             if (!in_array($required, $subjects)) {
-                throw new PointCalculationException("Hiányzó kötelező érettségi tárgy: {$required->value}");
+                $errors[] = "Hiányzó kötelező érettségi tárgy: {$required->value}";
             }
         }
+
+        return $errors;
     }
 
-    private function validatePassingScores(array $examResults): void
+    private function validatePassingScores(array $examResults): array
     {
+        $errors = [];
+
         foreach ($examResults as $examResult) {
             if ($examResult->score < self::MIN_PASSING_SCORE) {
-                throw new PointCalculationException("Sikertelen érettségi: {$examResult->name->value} ({$examResult->score}%)");
+                $errors[] = "Sikertelen érettségi: {$examResult->name->value} ({$examResult->score}%)";
             }
         }
+
+        return $errors;
     }
 
     private function getCourseRequirements(string $university, string $faculty, string $course): array
     {
         if (!isset(self::COURSE_REQUIREMENTS[$university][$faculty][$course])) {
-            throw new PointCalculationException("Ismeretlen szak: {$university} {$faculty} - {$course}");
+            throw new PointCalculationException(["Ismeretlen szak: {$university} {$faculty} - {$course}"]);
         }
 
         return self::COURSE_REQUIREMENTS[$university][$faculty][$course];
     }
 
-    private function calculateBasePoints(array $examResults, array $requirements): int
+    private function validateCourseRequirements(array $examResults, array $requirements): array
     {
-        $required = $requirements['required'];
-        $elective = $requirements['elective'];
-        $requiredAdvanced = $requirements['required_advanced'] ?? [];
-
+        $errors = [];
         $examResultsByName = $this->indexByName($examResults);
+        $requiredAdvanced = $requirements['required_advanced'] ?? [];
+        $globalRequired = array_map(fn($s) => $s->value, self::REQUIRED_SUBJECTS);
 
-        foreach ($required as $subject) {
+        foreach ($requirements['required'] as $subject) {
+            if (in_array($subject->value, $globalRequired)) {
+                continue;
+            }
             if (!isset($examResultsByName[$subject->value])) {
-                throw new PointCalculationException("Hiányzó kötelező tárgy: {$subject->value}");
-            }
-            if (in_array($subject, $requiredAdvanced) && $examResultsByName[$subject->value]->type !== ExamType::Advanced) {
-                throw new PointCalculationException("A(z) {$subject->value} tárgyat emelt szinten kell teljesíteni");
+                $errors[] = "Hiányzó kötelező érettségi tárgy: {$subject->value}";
+            } elseif (in_array($subject, $requiredAdvanced) && $examResultsByName[$subject->value]->type !== ExamType::Advanced) {
+                $errors[] = "A(z) {$subject->value} tárgyat emelt szinten kell teljesíteni.";
             }
         }
 
-        $electiveScores = [];
-        foreach ($elective as $subject) {
-            if (isset($examResultsByName[$subject->value])) {
-                $electiveScores[] = $examResultsByName[$subject->value]->score;
-            }
-        }
+        $electiveScores = array_filter(
+            array_map(fn($subject) => $examResultsByName[$subject->value]->score ?? null, $requirements['elective']),
+            fn($score) => $score !== null
+        );
 
         if (empty($electiveScores)) {
-            throw new PointCalculationException("Nincs teljesített kötelezően választható tárgy");
+            $errors[] = "Nincs teljesített kötelezően választható tárgy.";
         }
 
-        $requiredScore = array_sum(array_map(fn($subject) => $examResultsByName[$subject->value]->score, $required));
+        return $errors;
+    }
+
+    private function calculateBasePoints(array $examResults, array $requirements): int
+    {
+        $examResultsByName = $this->indexByName($examResults);
+
+        $requiredScore = array_sum(array_map(fn($subject) => $examResultsByName[$subject->value]->score, $requirements['required']));
+        $electiveScores = array_filter(
+            array_map(fn($subject) => $examResultsByName[$subject->value]->score ?? null, $requirements['elective']),
+            fn($score) => $score !== null
+        );
         $bestElectiveScore = max($electiveScores);
 
         return min(($requiredScore + $bestElectiveScore) * 2, self::MAX_BASE_POINTS);
@@ -221,6 +250,7 @@ private function validateNoDuplicateLanguages(array $bonusPoints): void
         foreach ($examResults as $examResult) {
             $indexed[$examResult->name->value] = $examResult;
         }
+
         return $indexed;
     }
 }

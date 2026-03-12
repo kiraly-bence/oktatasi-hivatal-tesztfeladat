@@ -22,7 +22,7 @@ class PointCalculatorController
         } catch (PointCalculationException $e) {
             return new JsonResponse([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'messages' => $e->messages,
             ]);
         }
 
