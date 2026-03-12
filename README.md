@@ -37,7 +37,7 @@ php -S localhost:8080 -t public
 
 ### Példa request
 
-POST `localhost:8080/api/calculate-points`
+POST `/api/calculate-points`
 
 ```json
 {
